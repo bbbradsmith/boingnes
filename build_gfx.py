@@ -62,14 +62,17 @@ class Tile:
         self.d = bytes(d)
 
     # create tile from indexed image (only 2 bits of index are observed)
-    def grab(img,x,y):
+    def grab(img,tx,ty):
         c = [0]*16
-        for j in range(0,8):
-            for i in range(0,8):
-                p = img.getpixel((x+i,y+j)) & 3
-                c[0+j] = (c[0+j] << 1) | (p &  1)
-                c[8+j] = (c[8+j] << 1) | (p >> 1)
-        return Tile(c)
+        a = 0
+        for y in range(0,8):
+            for x in range(0,8):
+                p = img.getpixel((tx+x,ty+y))
+                c[0+y] = (c[0+y] << 1) | (p &  1)
+                c[8+y] = (c[8+y] << 1) | ((p >> 1) & 1)
+                if (p&3) != 0 and (p>=4): # any non-0 non-palette-0 colour determines attribute
+                    a = p >> 2
+        return (Tile(c),a)
 
     # paste tile onto image
     def draw(self,img,x,y,a):
@@ -100,9 +103,10 @@ class Tile:
             c.append(b)
         return Tile(c)
     def flipy(self):
-        return Tile(self.d[0:8].reverse() + self.d[8:16].reverse())
+        return Tile(bytes(reversed(bytearray(self.d[ 0: 8]))) +
+                    bytes(reversed(bytearray(self.d[ 8:16]))))
     def flipxy(self):
-        return flipx(flipy(self))
+        return self.flipy().flipx()
 
     # swap colours 2 and 3
     def swap23(self):
@@ -118,6 +122,9 @@ class Tile:
         return not (self.d == other.d)
     def __lt__(self,other):
         return self.d < other.d
+
+# blank tile
+Tile.BLANK = Tile()
 
 # convert list of Tile to binary blob
 def tile_dump(tiles):
@@ -148,15 +155,6 @@ def tiles_to_img(tiles, palette, width=16, horizontal=True):
 # Nametable generation
 #
 
-# deduce palette attribute for 8x8 pixel tile
-def grab_att(img,tx,ty): # if any non-0 colour in tile, use it as attribute index
-    for y in range(0,8):
-        for x in range(0,8):
-            p = img.getpixel((tx+x,ty+y))
-            if p != 0:
-                return p >> 2
-    return 0
-
 # makes nametable data from indexed 16-colour image
 # returns (nametable tile indices, packed attributes, Tile array)
 # Note: will modify tiles (append) if it is passed as an argument.
@@ -171,14 +169,14 @@ def make_nametable(img,tiles=[]):
         for tx in range(0,tw):
             ox = tx*8
             oy = ty*8
-            t = Tile.grab(img,ox,oy)
-            a = grab_att(img,ox,oy)
+            (t,a) = Tile.grab(img,ox,oy)
             if t in tiles:
                 nmt.append(tiles.index(t))
             else:
                 nmt.append(len(tiles))
                 tiles.append(t)
             att.append(a)
+            #print("%2d,%2d: %02X %2d" % (tx,ty,nmt[-1],att[-1]))
         for i in range(tw,aw): # pad to 4
             att.append(0)
     for j in range(th,ah): # pad to 4
@@ -212,8 +210,10 @@ def nametable_to_img(nmt,att,tiles,palette,tw=32):
     index_setpal(img,palette)
     return img
 
+# compiles a nametable from a PNG file, outputs data files, collates tiles
 def convert_nametable_img(filename,palette,tiles=[]):
     print("convert nametable: " + filename)
+    old_tilecount = len(tiles)
     filebase = os.path.splitext(os.path.basename(filename))[0]
     src = index_img_load(filename,palette)
     (n,a,tiles) = make_nametable(src,tiles)
@@ -231,10 +231,112 @@ def convert_nametable_img(filename,palette,tiles=[]):
     else:
         print("%d pixel errors: %s" % (count,filecmp))
         cmpimg.save(filecmp)
+    print("%d new tiles. %d total." % (len(tiles)-old_tilecount,len(tiles)))
+    print()
     return tiles
 
 #
-# TEST!
+# Sprites
+#
+
+# makes a sprite from a rectangle of an image
+# decomposes as a, 8x8 pixel grid (discarding blank tiles)
+# assumes one layer of colour per tile
+# returns (sprite list ([a,y,x,t]),tiles)
+def make_sprite(img,x,y,w,h,px,py,tiles=[]):
+    # crop to given rectangle, pad to 8 pixels, reorient pivot
+    imc = img.crop((x,y,x+w,y+h))
+    w = ((w+7)//8)*8
+    h = ((h+7)//8)*8
+    imp = PIL.Image.new("P",(w,h),0)
+    imp.paste(imc)
+    px -= x
+    py -= y
+    #st = [[],[],[],[]]
+    st = [[],[],[],[],[],[],[],[]] # palette shifted sprites for this demo
+    def add_st(t):
+        st[0].append(t)
+        st[1].append(t.flipx())
+        st[2].append(t.flipy())
+        st[3].append(t.flipxy())
+        # palette shifted variants
+        for i in range(4):
+            st[i+4].append(st[i+0][-1].swap23())
+    for t in tiles:
+        add_st(t)
+    sprite = []
+    for sy in range(0,h,8):
+        for sx in range(0,w,8):
+            (t,a) = Tile.grab(img,x+sx,y+sy)
+            if t == Tile.BLANK:
+                continue
+            # check for duplicate tile first (including flipped variations)
+            ti = -1
+            #for i in range(0,4):
+            for i in range(0,8): # palette shifted
+                if t in st[i]:
+                    ti = st[i].index(t)
+                    a ^= (i << 6) # flip flags
+                    if i >= 4: # palette shifted, swap palettes 0/1, drop "9th" bit
+                        a = (a^1) & 0xFF
+                    break
+            if ti < 0: # not duplicate, add a new one
+                ti = len(st[0])
+                add_st(t)
+            a |= 0x1C # set "unused" middle bits so that a=0 can mark end of sprite
+            sprite.append((a,((sy-py)-1),(sx-px),ti))
+            #print("%02d: %02X %02X %4d,%4d" % (len(sprite)-1,a,ti,sprite[-1][2],sprite[-1][1]))
+    # looking for common tiles:
+    #sd = ">"
+    #for (a,y,x,t) in sprite:
+    #    sd += " %02X" % t
+    #print(sd)
+    return (sprite,st[0])
+
+# creates an indexed palette image from sprite data
+def sprite_to_img(sprite,tiles,palette):
+    mx0 = min([s[2] for s in sprite])
+    my0 = min([s[1] for s in sprite])
+    mx1 = max([s[2] for s in sprite])
+    my1 = max([s[1] for s in sprite])
+    img = PIL.Image.new("P",(mx1+8-mx0,my1+8-my0),0)
+    for (a,y,x,t) in reversed(sprite):
+        t = tiles[t]
+        if (a & 0x40) != 0:
+            t = t.flipx()
+        if (a & 0x80) != 0:
+            t = t.flipy()
+        t.draw_sprite(img,x-mx0,y-my0,a&3)
+    index_setpal(img,palette)
+    return img
+
+# compiles a sprite from a PNG file, pivot at bottom centre, collates tiles
+def convert_sprite(filename,palette,tiles=[],prefix="",shadow=False):
+    print("convert sprite: " + filename)
+    old_tilecount = len(tiles)
+    filebase = os.path.splitext(os.path.basename(filename))[0]
+    src = index_img_load(filename,palette)
+    if shadow: # generate "shadow" in color 1, shifted
+        SOX = 4
+        SOY = 2
+        for y in range(SOY,src.height):
+            for x in range(SOX,src.width):
+                if src.getpixel((x,y)) != 0:
+                    continue
+                if src.getpixel((x-SOX,y-SOY)) < 2:
+                    continue
+                src.putpixel((x,y),1)
+    (sprite,tiles) = make_sprite(src,0,0,src.width,src.height,src.width//2,src.height,tiles)
+    filepng = os.path.join(OUTPUT_DIR,prefix+filebase+".spr.png") # sprite visualized
+    print("sprite preview: " + filepng)
+    dst = sprite_to_img(sprite,tiles,palette)
+    dst.save(filepng)
+    print("%d new tiles. %d total." % (len(tiles)-old_tilecount,len(tiles)))
+    print()
+    return (sprite,tiles)
+
+#
+# Boing Ball stuff
 #
 
 grey_pal = [
@@ -246,12 +348,48 @@ bg_pal = [
     (  0,  0,  0),( 33, 64, 64),( 37,223,192),(255,255,255),
     ]
 
-bg_tiles = convert_nametable_img("gfx/amiga.png",bg_pal)
+fg_pal = [
+    (  0,  0,  0),( 64, 64, 64),(255,  0,  0),(255,255,255),
+    (  0,  0,  0),( 64, 64, 64),(255,255,255),(255,  0,  0),
+    ]
+
+bg_tiles = []
+fg0_tiles = []
+fg1_tiles = []
+
+# backgrounds
+bg_tiles = convert_nametable_img("gfx/amiga.png",bg_pal,bg_tiles)
 bg_tiles = convert_nametable_img("gfx/atari.png",bg_pal,bg_tiles)
 
-filebgchr = os.path.join(OUTPUT_DIR,"bg.chr")
-filebgpng = os.path.join(OUTPUT_DIR,"bg.chr.png")
-print("%d BG tiles: %s" % (len(bg_tiles),filebgchr))
-open(filebgchr,"wb").write(tile_dump(bg_tiles))
-print("BG tile preview:" + filebgpng)
-tiles_to_img(bg_tiles,grey_pal).save(filebgpng)
+# list of sprites to put in each FG bank
+sp0 = [
+    ("gfx/square/%04d.png","sq",[ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
+    ]
+sp1 = [
+    ("gfx/par/%04d.png",   "pa",[ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
+    ]
+
+for (fn,pre,il) in sp0:
+    for i in il:
+        (s,fg0_tiles) = convert_sprite(fn%i,fg_pal,fg0_tiles,pre+"u",False) # unshadowed
+        (s,fg0_tiles) = convert_sprite(fn%i,fg_pal,fg0_tiles,pre+"s",True) # shadowed
+        # TODO store sprites and keep enum list
+for (fn,pre,il) in sp1:
+    for i in il:
+        (s,fg1_tiles) = convert_sprite(fn%i,fg_pal,fg1_tiles,pre+"u",False)
+        (s,fg1_tiles) = convert_sprite(fn%i,fg_pal,fg1_tiles,pre+"s",True)
+
+def save_chr(f,tiles):
+    filechr = os.path.join(OUTPUT_DIR,f+".chr")
+    filepng = os.path.join(OUTPUT_DIR,f+".chr.png")
+    print("%d tiles: %s" % (len(tiles),filechr))
+    open(filechr,"wb").write(tile_dump(tiles))
+    print("tile preview:" + filepng)
+    tiles_to_img(tiles,grey_pal).save(filepng)
+    print()
+
+save_chr("bg",bg_tiles)
+save_chr("fg0",fg0_tiles)
+save_chr("fg1",fg1_tiles)
+
+print("done.")
