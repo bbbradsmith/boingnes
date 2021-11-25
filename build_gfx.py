@@ -2,9 +2,12 @@
 
 import PIL.Image
 import os.path
+import datetime
 from functools import total_ordering
 
 OUTPUT_DIR = "temp"
+
+now_string = datetime.datetime.now().strftime("%a %b %d %H:%M:%S %Y")
 
 #
 # Indexed images
@@ -335,6 +338,37 @@ def convert_sprite(filename,palette,tiles=[],prefix="",shadow=False):
     print()
     return (sprite,tiles)
 
+def export_sprites(basename,spriteset):
+    print("export sprites: " + basename)
+    s = "; Generated: " + now_string + "\n"
+    table0 = bytearray()
+    table1 = bytearray()
+    sdata  = bytearray()
+    offset = len(spriteset) * 2 # sdata starts at end of 16-bit offset table
+    count = 0
+    for (name,sprite) in spriteset:
+        s += "SPRITE_%40s = %d\n" % (name,count)
+        count += 1
+        table0.append(offset & 0xFF)
+        table1.append(offset >> 8)
+        for (a,y,x,t) in sprite:
+            sdata.append(a)
+            sdata.append(y&0xFF) # convert signed to unsigned byte
+            sdata.append(x&0xFF)
+            sdata.append(t)
+        sdata.append(0) # a=0 marks end of sprite
+        offset += (len(sprite) * 4) + 1
+    s += "SPRITE_%40s = %d\n" % ("COUNT",count)
+    fileinc = os.path.join(OUTPUT_DIR,basename+".inc")
+    filebin = os.path.join(OUTPUT_DIR,basename+".bin")
+    print("sprite include: " + fileinc)
+    open(fileinc,"wt").write(s)
+    print("sprite data: " + filebin)
+    sbin = table0+table1+sdata
+    open(filebin,"wb").write(sbin)
+    print("%d sprites. %d bytes." % (len(spriteset),len(sbin)))
+    print()
+
 #
 # Boing Ball stuff
 #
@@ -369,15 +403,21 @@ sp1 = [
     ("gfx/par/%04d.png",   "pa",[ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
     ]
 
+spriteset = []
 for (fn,pre,il) in sp0:
     for i in il:
         (s,fg0_tiles) = convert_sprite(fn%i,fg_pal,fg0_tiles,pre+"u",False) # unshadowed
+        spriteset.append((pre+"u%04d"%i,s))
         (s,fg0_tiles) = convert_sprite(fn%i,fg_pal,fg0_tiles,pre+"s",True) # shadowed
-        # TODO store sprites and keep enum list
+        spriteset.append((pre+"s%04d"%i,s))
 for (fn,pre,il) in sp1:
     for i in il:
         (s,fg1_tiles) = convert_sprite(fn%i,fg_pal,fg1_tiles,pre+"u",False)
+        spriteset.append((pre+"u%04d"%i,s))
         (s,fg1_tiles) = convert_sprite(fn%i,fg_pal,fg1_tiles,pre+"s",True)
+        spriteset.append((pre+"s%04d"%i,s))
+
+export_sprites("sprite",spriteset)
 
 def save_chr(f,tiles):
     filechr = os.path.join(OUTPUT_DIR,f+".chr")
