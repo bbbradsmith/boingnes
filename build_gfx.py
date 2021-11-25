@@ -347,7 +347,7 @@ def export_sprites(basename,spriteset):
     offset = len(spriteset) * 2 # sdata starts at end of 16-bit offset table
     count = 0
     for (name,sprite) in spriteset:
-        s += "SPRITE_%40s = %d\n" % (name,count)
+        s += "SPRITE_%-20s = %d\n" % (name,count)
         count += 1
         table0.append(offset & 0xFF)
         table1.append(offset >> 8)
@@ -358,7 +358,7 @@ def export_sprites(basename,spriteset):
             sdata.append(t)
         sdata.append(0) # a=0 marks end of sprite
         offset += (len(sprite) * 4) + 1
-    s += "SPRITE_%40s = %d\n" % ("COUNT",count)
+    s += "SPRITE_%-20s = %d\n" % ("COUNT",count)
     fileinc = os.path.join(OUTPUT_DIR,basename+".inc")
     filebin = os.path.join(OUTPUT_DIR,basename+".bin")
     print("sprite include: " + fileinc)
