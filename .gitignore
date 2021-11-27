@@ -1,5 +1,6 @@
 cc65/
 libsrc/
+other/
 temp/runtime/
 temp/*.o
 temp/*.s

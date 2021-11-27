@@ -341,6 +341,7 @@ def convert_sprite(filename,palette,tiles=[],prefix="",shadow=False):
 def export_sprites(basename,spriteset):
     print("export sprites: " + basename)
     s = "; Generated: " + now_string + "\n"
+    sh = "// Generated: " + now_string + "\n"
     table0 = bytearray()
     table1 = bytearray()
     sdata  = bytearray()
@@ -348,6 +349,7 @@ def export_sprites(basename,spriteset):
     count = 0
     for (name,sprite) in spriteset:
         s += "SPRITE_%-20s = %d\n" % (name,count)
+        sh += "#define SPRITE_%-20s   %d\n" % (name,count)
         count += 1
         table0.append(offset & 0xFF)
         table1.append(offset >> 8)
@@ -359,10 +361,14 @@ def export_sprites(basename,spriteset):
         sdata.append(0) # a=0 marks end of sprite
         offset += (len(sprite) * 4) + 1
     s += "SPRITE_%-20s = %d\n" % ("COUNT",count)
+    sh += "#define SPRITE_%-20s   %d\n" % ("COUNT",count)
+    fileh   = os.path.join(OUTPUT_DIR,basename+".h")
     fileinc = os.path.join(OUTPUT_DIR,basename+".inc")
     filebin = os.path.join(OUTPUT_DIR,basename+".bin")
     print("sprite include: " + fileinc)
     open(fileinc,"wt").write(s)
+    print("sprite include: " + fileh)
+    open(fileh,"wt").write(sh)
     print("sprite data: " + filebin)
     sbin = table0+table1+sdata
     open(filebin,"wb").write(sbin)
