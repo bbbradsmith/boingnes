@@ -4,7 +4,11 @@
 ; http://rainwarrior.ca
 ;
 
+.export _amiga_nmt          ; uint8 amiga_nmt[1024]
+.export _atari_nmt          ; uint8 atari_nmt[1024]
+
 .exportzp _input            ; uint8 input[2]
+.exportzp _input_new        ; uint8 input_new[2]
 .exportzp _cnrom_bank       ; uint8 cnrom_bank
 .exportzp _i,_j,_k,_l       ; uint8 i,j,k,l
 .exportzp _mx,_nx,_ox,_px   ; uint16 mx,nx,ox,px
@@ -13,7 +17,7 @@
 .export _ppu_send           ; uint8 ppu_send[72]
 .export _oam                ; uint8 oam[256]
 
-.export _ppu_latch          ; void(uint16 addr);
+.export _ppu_latch          ; void ppu_latch(uint16 addr);
 .export _ppu_write          ; void ppu_write(uint8 value);
 .export _ppu_load           ; void ppu_load(uint8* data, uint16 count)
 .export _ppu_fill           ; void ppu_fill(uint8 value, uint16 count)
@@ -31,13 +35,22 @@
 
 .export _sprite_begin       ; void sprite_begin()
 .export _sprite_end         ; void sprite_end()
+.export _sprite_tile        ; void sprite_tile(uint8 t, uint8 a, uint8 x, uint8 y)
 .export _sprite             ; void sprite(uint8 e, uint8 x, uint8 y)
 
 .export _sound_play         ; void sound_play(uint8* sound)
 .export _input_poll         ; uint8 input_poll
 .export _input_poll2        ; uint8 input_poll2()
 
+.export _nescopy            ; void nescopy(void* dst, void* src, uint8 count)
+
 .import _main
+.import popa ; cc65
+.import popax ; cc65
+.import popptr1 ; cc65
+.import incsp3 ; cc65
+.importzp tmp1, tmp2 ; cc65
+.importzp ptr1, ptr2 ; cc65
 
 ; ==========
 ; Boing Ball
@@ -54,9 +67,16 @@
 .incbin "temp/fg1.chr"
 
 .segment "RODATA"
+
 sprite_data:
 .incbin "temp/sprite.bin"
 .include "temp/sprite.inc"
+
+_amiga_nmt:
+.incbin "temp/amiga.nmt"
+
+_atari_nmt:
+.incbin "temp/atari.nmt"
 
 ; ===
 ; RAM
@@ -72,9 +92,12 @@ ppu_2000:     .res 1 ; PPU register settings (applied with ppu_send)
 ppu_2001:     .res 1
 ppu_2005:     .res 2
 ppu_send_pos: .res 1
+oam_pos:      .res 1
 sfx_ptr:      .res 2 ; sound state
 sfx_ptr_next: .res 2
+input_last:   .res 2
 _input:       .res 2 ; last result of input_poll
+_input_new:   .res 2 ; new buttons pressed at last input_poll
 _cnrom_bank:  .res 1
 _i:           .res 1 ; convenient index/temporary values
 _j:           .res 1
@@ -103,21 +126,159 @@ _oam: .res 256
 ; =========
 
 _ppu_latch: ; void(uint16 addr);
+	bit $2002
+	stx $2006
+	sta $2006
+	rts
+
 _ppu_write: ; void ppu_write(uint8 value);
+	sta $2007
+	rts
+
 _ppu_load: ; void ppu_load(uint8* data, uint16 count)
+	sta ptr2+0
+	stx ptr2+1 ; ptr2 = count
+	jsr popptr1 ; ptr1 = data
+	ldy #0
+	lda ptr2+0
+	ora ptr2+1
+	beq @rts
+@loop:
+	lda (ptr1), Y
+	sta $2007
+	inc ptr1+0 ; inc ptr1
+	bne :+
+		inc ptr1+1
+	:
+	dec ptr2+0 ; dec ptr2 (quit if 0)
+	bne @loop
+	lda ptr2+1
+	beq @rts
+	dec ptr2+1
+	jmp @loop
+@rts:
+	rts
+
 _ppu_fill: ; void ppu_fill(uint8 value, uint16 count)
+	sta ptr2+0
+	stx ptr2+1
+	txa
+	ora ptr2+0
+	bne :+
+		jmp popa
+	:
+	jsr popa
+@loop:
+	sta $2007
+	dec ptr2+0
+	bne @loop
+	lda ptr2+1
+	beq @rts
+	dec ptr2+1
+	jmp @loop
+@rts:
+	rts
+
 _ppu_packet: ; void ppu_packet(uint16 addr, uint8* data, uint8 count)
-_ppu_packet_apply: ; void ppu_packet_apply()
+	ldy ppu_send_pos
+	sta _ppu_send+0, Y ; count
+	sta tmp1
+	jsr popptr1 ; ptr1 = data
+	jsr popax ; X:A = addr
+	ldy tmp1
+	bne :+
+		rts ; count of 0, no packet
+	:
+	ldy ppu_send_pos
+	sta _ppu_send+2, Y ; addr low byte second
+	txa
+	sta _ppu_send+1, Y ; addr high byte first
+	iny
+	iny
+	iny
+	tya
+	tax
+	ldy #0
+	:
+		lda (ptr1), Y
+		sta _ppu_send, X
+		inx
+		iny
+		cpy tmp1
+		bcc :-
+	lda #0
+	sta _ppu_send, X ; 0 marks end of packets
+	stx ppu_send_pos
+	rts
+
+; void ppu_packet_apply()
+_ppu_packet_apply = ppu_packet_apply
+
 _ppu_ctrl: ; void ppu_ctrl(uint8 v)
+	sta ppu_2000
+	rts
+
 _ppu_ctrl_apply: ; void ppu_control_apply(uint8 v)
+	sta ppu_2000
+	sta $2000
+	rts
+
 _ppu_mask: ; void ppu_mask(uint8 v)
+	sta ppu_2001
+	rts
+
 _ppu_scroll: ; void ppu_scroll(uint16 x, uint16 y)
+	sta ppu_2005+1
+	txa
+	asl
+	sta tmp1
+	jsr popax
+	sta ppu_2005+0
+	txa
+	ora tmp1
+	and #%00000011
+	sta tmp1
+	lda ppu_2000
+	and #%11111100
+	ora tmp1
+	sta ppu_2000
+	rts
+
 _ppu_render_frame: ; void ppu_render_frame()
+	lda #1
+	sta ppu_ready
+ppu_ready_wait:
+	lda ppu_ready
+	bne ppu_ready_wait
+	rts
+
 _ppu_wait_frame: ; void ppu_wait_frame()
+	lda nmi_count
+	:
+		cmp nmi_count
+		beq :-
+	rts
+
 _ppu_render_off: ; void ppu_render_off()
+	lda #2
+	sta ppu_ready
+	jmp ppu_ready_wait
+
 _ppu_nmi_off: ; void ppu_nmi_off()
+	lda ppu_2000
+	and #%01111111
+	sta $2000
+	rts
+
 _ppu_nmi_on: ; void ppu_nmi_on()
-	; TODO
+	bit $2002
+	:
+		bit $2002
+		bpl :-
+	lda ppu_2000
+	ora #%11111111
+	sta ppu_2000
+	sta $2000
 	rts
 
 ; =======
@@ -125,9 +286,101 @@ _ppu_nmi_on: ; void ppu_nmi_on()
 ; =======
 
 _sprite_begin:
+	lda #0
+	sta oam_pos
+	rts
+
 _sprite_end:
-_sprite:
-	; TODO
+	ldx oam_pos
+	txa
+	and #3
+	beq :+
+		rts ; 255 = completely full, treat any non-4 multiple as "full" error
+	:
+	lda #255
+	:
+		sta _oam+0, X
+		inx
+		inx
+		inx
+		inx
+		bne :-
+	dex
+	stx oam_pos
+	rts
+
+_sprite_tile: ; void sprite_tile(uint8 t, uint8 a, uint8 x, uint8 y)
+	ldx oam_pos
+	cpx #255
+	bne :+
+		jmp incsp3
+	:
+	sta _oam+0, X ; X
+	jsr popa
+	sta _oam+3, X ; Y
+	jsr popa
+	sta _oam+2, X ; attribute
+	jsr popa
+	sta _oam+1, X ; tile
+	inx
+	inx
+	inx
+	inx
+	bne :+
+		dex ; 255 = mark as full
+	:
+	stx oam_pos
+	rts
+
+_sprite: ; void sprite(uint8 e, uint8 x, uint8 y)
+	sta tmp2 ; Y
+	jsr popa
+	sta tmp1 ; X
+	jsr popa
+	tax
+	lda #<sprite_data
+	clc
+	adc sprite_data, X
+	sta ptr1+0
+	lda #>sprite_data
+	adc sprite_data+SPRITE_COUNT, X
+	sta ptr1+1
+	; ptr1 = sprite data, (tmp1,tmp2) = (X,Y)
+	ldx oam_pos
+	ldy #0
+@loop:
+	cpx #255
+	beq @end
+	; attribute
+	lda (ptr1), Y
+	beq @end ; 0 marks end of sprite
+	sta _oam+2, X
+	; Y
+	iny
+	lda (ptr1), Y
+	clc
+	adc tmp2
+	sta _oam+0, X
+	; X
+	iny
+	lda (ptr1), Y
+	clc
+	adc tmp1
+	sta _oam+3, X
+	; tile
+	iny
+	lda (ptr1), Y
+	sta _oam+1, X
+	; loop
+	iny
+	inx
+	inx
+	inx
+	inx
+	bne @loop
+	ldx #255 ; OAM is full
+@end:
+	stx oam_pos
 	rts
 
 ; =====
@@ -265,13 +518,18 @@ input_poll: ; polls controller X (0,1)
 		bcc :- ; guard reached when carry set
 	pla
 	cmp _input, X
-	bne :+
-		rts ; last 2 polls match: done (result in A but flags = 0)
-	:
+	beq @done ; last 2 polls match: done
 	; mismatch = probable DPCM conflict, try again
 	lda _input, X
 	pha
 	jmp @poll
+@done:
+	eor input_last, X ; changes since last poll
+	and _input, X ; keep presses, ignore releases
+	sta _input_new, X
+	lda _input, X
+	sta input_last, X ; remember last press for next time
+	rts
 
 _input_poll2: ; uint8 input_poll2()
 	ldx #1
@@ -280,6 +538,27 @@ _input_poll:  ; uint8 input_poll()
 	jsr input_poll0
 	;ldx #0
 	lda _input+0
+	rts
+
+; =======
+; Utility
+; =======
+
+_nescopy: ; void nescopy(void* dst, void* src, uint8 count)
+	sta tmp1
+	jsr popptr1
+	jsr popax
+	sta ptr2+0
+	stx ptr2+1
+	ldy tmp1
+	beq :++
+:
+	dey
+	lda (ptr1), Y
+	sta (ptr2), Y
+	cpy #0
+	bne :-
+:
 	rts
 
 ; ===
@@ -301,13 +580,12 @@ nmi:
 	tya
 	pha
 	lda ppu_ready
-	beq @jmp_post_send ; 0 = no update
+	beq @post_send ; 0 = no update
 	cmp #2 
 	bcc @send ; 2 = render off
 	lda ppu_2001
 	and #%11100001
 	sta $2001
-@jmp_post_send:
 	jmp @post_send
 @send: ; 1 = send ppu data
 	; OAM
@@ -334,6 +612,34 @@ nmi:
 	lda ppu_2000
 	sta $2000
 	; upload _ppu_send
+	jsr ppu_packet_apply
+	; set scroll and mask ($2000 is already set)
+	lda ppu_2005+0
+	sta $2005
+	lda ppu_2005+1
+	sta $2005
+	lda ppu_2001
+	sta $2001
+	; set CNROM CHR bank
+	lda _cnrom_bank
+	and #1 ; 2 banks
+	tax
+	sta cnrom_table
+@post_send:
+	jsr sound_tick
+	lda #0
+	sta ppu_ready
+	sta nmi_lock
+	pla
+	tay
+	pla
+	tax
+	pla
+	rti
+
+cnrom_table: .byte 0, 1 ; bus conflict table
+
+ppu_packet_apply: ; applies all packets stored in _ppu_send
 	; move _ppu_send address to stack
 	.assert (>_ppu_send = $01), error, "_ppu_send expected on stack page."
 	tsx
@@ -364,28 +670,7 @@ nmi:
 	lda #0
 	sta _ppu_send ; clear packet
 	sta ppu_send_pos
-	lda ppu_2005+0
-	sta $2005
-	lda ppu_2005+1
-	sta $2005
-	lda ppu_2001
-	sta $2001
-	; set CNROM CHR bank
-	lda _cnrom_bank
-	and #1 ; 2 banks
-	tax
-	sta cnrom_table
-@post_send:
-	jsr sound_tick
-	pla
-	tay
-	pla
-	tax
-	pla
-	inc nmi_lock ; =0
-	rti
-
-cnrom_table: .byte 0, 1 ; bus conflict table
+	rts
 
 ; ===
 ; IRQ
