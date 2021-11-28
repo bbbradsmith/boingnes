@@ -1,4 +1,4 @@
-; Generated: Sat Nov 27 03:50:36 2021
+; Generated: Sun Nov 28 05:40:54 2021
 SPRITE_squ0000              = 0
 SPRITE_sqs0000              = 1
 SPRITE_squ0001              = 2
@@ -47,4 +47,5 @@ SPRITE_pau0010              = 44
 SPRITE_pas0010              = 45
 SPRITE_pau0011              = 46
 SPRITE_pas0011              = 47
-SPRITE_COUNT                = 48
+SPRITE_boing                = 48
+SPRITE_COUNT                = 49

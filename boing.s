@@ -7,9 +7,12 @@
 .export _amiga_nmt          ; uint8 amiga_nmt[1024]
 .export _atari_nmt          ; uint8 atari_nmt[1024]
 
+_nmi_count = nmi_count
+.exportzp _nmi_count        ; uint8 nmi_count
 .exportzp _input            ; uint8 input[2]
 .exportzp _input_new        ; uint8 input_new[2]
 .exportzp _cnrom_bank       ; uint8 cnrom_bank
+.exportzp _ascii_offset     ; uint8 ascii_offset
 .exportzp _i,_j,_k,_l       ; uint8 i,j,k,l
 .exportzp _mx,_nx,_ox,_px   ; uint16 mx,nx,ox,px
 
@@ -17,15 +20,18 @@
 .export _ppu_send           ; uint8 ppu_send[72]
 .export _oam                ; uint8 oam[256]
 
-.export _ppu_latch          ; void ppu_latch(uint16 addr);
+.export _ppu_latch          ; void ppu_latch(uint16 addr)
+.export _ppu_latch_at       ; void ppu_latch_at(uint8 x, uint8 y)
 .export _ppu_write          ; void ppu_write(uint8 value);
-.export _ppu_load           ; void ppu_load(uint8* data, uint16 count)
+.export _ppu_load           ; void ppu_load(const uint8* data, uint16 count)
 .export _ppu_fill           ; void ppu_fill(uint8 value, uint16 count)
-.export _ppu_packet         ; void ppu_packet(uint16 addr, uint8* data, uint8 count)
+.export _ppu_string         ; void ppu_string(const char* s)
+.export _ppu_packet         ; void ppu_packet(uint16 addr, const uint8* data, uint8 count)
 .export _ppu_packet_apply   ; void ppu_packet_apply()
 .export _ppu_ctrl           ; void ppu_ctrl(uint8 v)
 .export _ppu_ctrl_apply     ; void ppu_control_apply(uint8 v)
 .export _ppu_mask           ; void ppu_mask(uint8 v)
+.export _ppu_mask_apply     ; void ppu_mask_apply(uint8 v)
 .export _ppu_scroll         ; void ppu_scroll(uint16 x, uint16 y)
 .export _ppu_render_frame   ; void ppu_render_frame()
 .export _ppu_wait_frame     ; void ppu_wait_frame()
@@ -37,19 +43,19 @@
 .export _sprite_end         ; void sprite_end()
 .export _sprite_tile        ; void sprite_tile(uint8 t, uint8 a, uint8 x, uint8 y)
 .export _sprite             ; void sprite(uint8 e, uint8 x, uint8 y)
+.export _sprite_flip        ; void sprite_flip(uint8 e, uint8 x, uint8 y)
 
-.export _sound_play         ; void sound_play(uint8* sound)
-.export _input_poll         ; uint8 input_poll
+.export _sound_play         ; void sound_play(const uint8* sound)
+.export _input_poll         ; uint8 input_poll()
 .export _input_poll2        ; uint8 input_poll2()
-
-.export _nescopy            ; void nescopy(void* dst, void* src, uint8 count)
+.export _nescopy            ; void nescopy(void* dst, const void* src, uint8 count)
 
 .import _main
 .import popa ; cc65
 .import popax ; cc65
 .import popptr1 ; cc65
 .import incsp3 ; cc65
-.importzp tmp1, tmp2 ; cc65
+.importzp tmp1, tmp2, tmp3, tmp4 ; cc65
 .importzp ptr1, ptr2 ; cc65
 
 ; ==========
@@ -85,28 +91,29 @@ _atari_nmt:
 CSTACK_SIZE = 128 ; cc65 internal C stack
 
 .segment "ZEROPAGE"
-ppu_ready:    .res 1 ; 0 = not ready, 1 = render on and send update, 2 = render off
-nmi_count:    .res 1 ; increments every NMI
-nmi_lock:     .res 1 ; prevents NMI re-entry (disables updates)
-ppu_2000:     .res 1 ; PPU register settings (applied with ppu_send)
-ppu_2001:     .res 1
-ppu_2005:     .res 2
-ppu_send_pos: .res 1
-oam_pos:      .res 1
-sfx_ptr:      .res 2 ; sound state
-sfx_ptr_next: .res 2
-input_last:   .res 2
-_input:       .res 2 ; last result of input_poll
-_input_new:   .res 2 ; new buttons pressed at last input_poll
-_cnrom_bank:  .res 1
-_i:           .res 1 ; convenient index/temporary values
-_j:           .res 1
-_k:           .res 1
-_l:           .res 1
-_mx:          .res 2
-_nx:          .res 2
-_ox:          .res 2
-_px:          .res 2
+ppu_ready:     .res 1 ; 0 = not ready, 1 = render on and send update, 2 = render off
+nmi_count:     .res 1 ; increments every NMI
+nmi_lock:      .res 1 ; prevents NMI re-entry (disables updates)
+ppu_2000:      .res 1 ; PPU register settings (applied with ppu_send)
+ppu_2001:      .res 1
+ppu_2005:      .res 2
+ppu_send_pos:  .res 1
+oam_pos:       .res 1
+sfx_ptr:       .res 2 ; sound state
+sfx_ptr_next:  .res 2
+input_last:    .res 2
+_input:        .res 2 ; last result of input_poll
+_input_new:    .res 2 ; new buttons pressed at last input_poll
+_ascii_offset: .res 1 ; offset from CHR index to ASCII in ppu_string
+_cnrom_bank:   .res 1
+_i:            .res 1 ; convenient index/temporary values
+_j:            .res 1
+_k:            .res 1
+_l:            .res 1
+_mx:           .res 2
+_nx:           .res 2
+_ox:           .res 2
+_px:           .res 2
 
 .segment "BSS"
 cstack: .res CSTACK_SIZE ; cc65 internal C stack
@@ -125,11 +132,44 @@ _oam: .res 256
 ; Rendering
 ; =========
 
-_ppu_latch: ; void(uint16 addr);
+_ppu_latch: ; void ppu_latch(uint16 addr)
 	bit $2002
 	stx $2006
 	sta $2006
 	rts
+
+_ppu_latch_at: ; void ppu_latch_at(uint8 x, uint8 y)
+	; X: .....6.. ...54321
+	; Y: ....6.54 321.....
+	; A = Y
+	ldx #0
+	sta ptr1+0
+	lsr
+	ror ptr1+0
+	lsr
+	ror ptr1+0
+	pha
+	lsr
+	ror ptr1+0 ; ptr1+0 = Y 321.....
+	and #%00000011
+	sta ptr1+1
+	pla
+	and #%00001000
+	ora ptr1+1
+	ora #$20
+	sta ptr1+1 ; ptr1+1 = Y ....6.54 | $20
+	jsr popa ; A = X
+	pha
+	lsr
+	lsr
+	lsr
+	and #%00000100
+	ora ptr1+1
+	tax ; X .....6.. | Y ....6... | $20
+	pla
+	and #%00011111
+	ora ptr1+0 ; X ...54321 | Y 321.....
+	jmp _ppu_latch
 
 _ppu_write: ; void ppu_write(uint8 value);
 	sta $2007
@@ -150,11 +190,13 @@ _ppu_load: ; void ppu_load(uint8* data, uint16 count)
 	bne :+
 		inc ptr1+1
 	:
-	dec ptr2+0 ; dec ptr2 (quit if 0)
-	bne @loop
-	lda ptr2+1
-	beq @rts
-	dec ptr2+1
+	lda ptr2+0 ; dec ptr2 (quit if 0)
+	bne :+
+		lda ptr2+1
+		beq @rts
+		dec ptr2+1
+	:
+	dec ptr2+0
 	jmp @loop
 @rts:
 	rts
@@ -170,13 +212,30 @@ _ppu_fill: ; void ppu_fill(uint8 value, uint16 count)
 	jsr popa
 @loop:
 	sta $2007
+	ldx ptr2+0 ; dec ptr2 (quit if 0)
+	bne :+
+		ldx ptr2+1
+		beq @rts
+		dec ptr2+1
+	:
 	dec ptr2+0
-	bne @loop
-	lda ptr2+1
-	beq @rts
-	dec ptr2+1
 	jmp @loop
 @rts:
+	rts
+
+_ppu_string: ; void ppu_string(char* s)
+	sta ptr1+0
+	stx ptr1+1
+	ldy #0
+	:
+		lda (ptr1), Y
+		beq :+
+		sec
+		sbc _ascii_offset
+		sta $2007
+		iny
+		bne :-
+	:
 	rts
 
 _ppu_packet: ; void ppu_packet(uint16 addr, uint8* data, uint8 count)
@@ -214,15 +273,14 @@ _ppu_packet: ; void ppu_packet(uint16 addr, uint8* data, uint8 count)
 ; void ppu_packet_apply()
 _ppu_packet_apply = ppu_packet_apply
 
+_ppu_ctrl_apply: ; void ppu_control_apply(uint8 v)
+	sta $2000
 _ppu_ctrl: ; void ppu_ctrl(uint8 v)
 	sta ppu_2000
 	rts
 
-_ppu_ctrl_apply: ; void ppu_control_apply(uint8 v)
-	sta ppu_2000
-	sta $2000
-	rts
-
+_ppu_mask_apply: ; void ppu_mask_apply(uint8 v)
+	sta $2001
 _ppu_mask: ; void ppu_mask(uint8 v)
 	sta ppu_2001
 	rts
@@ -235,6 +293,7 @@ _ppu_scroll: ; void ppu_scroll(uint16 x, uint16 y)
 	jsr popax
 	sta ppu_2005+0
 	txa
+	and #%00000001
 	ora tmp1
 	and #%00000011
 	sta tmp1
@@ -276,7 +335,7 @@ _ppu_nmi_on: ; void ppu_nmi_on()
 		bit $2002
 		bpl :-
 	lda ppu_2000
-	ora #%11111111
+	ora #%10000000
 	sta ppu_2000
 	sta $2000
 	rts
@@ -336,6 +395,10 @@ _sprite: ; void sprite(uint8 e, uint8 x, uint8 y)
 	sta tmp2 ; Y
 	jsr popa
 	sta tmp1 ; X
+	lda #0
+	sta tmp3 ; X eor
+	sta tmp4 ; A eor
+sprite_common:
 	jsr popa
 	tax
 	lda #<sprite_data
@@ -354,6 +417,7 @@ _sprite: ; void sprite(uint8 e, uint8 x, uint8 y)
 	; attribute
 	lda (ptr1), Y
 	beq @end ; 0 marks end of sprite
+	eor tmp4
 	sta _oam+2, X
 	; Y
 	iny
@@ -364,6 +428,7 @@ _sprite: ; void sprite(uint8 e, uint8 x, uint8 y)
 	; X
 	iny
 	lda (ptr1), Y
+	eor tmp3
 	clc
 	adc tmp1
 	sta _oam+3, X
@@ -382,6 +447,18 @@ _sprite: ; void sprite(uint8 e, uint8 x, uint8 y)
 @end:
 	stx oam_pos
 	rts
+
+_sprite_flip: ; void sprite_flip(uint8 e, uint8 x, uint8 y)
+	sta tmp2 ; Y
+	jsr popa
+	sec
+	sbc #(8-1)
+	sta tmp1 ; X - (8-1)
+	lda #$FF
+	sta tmp3 ; X eor (X^$FF = -(X+1))
+	lda #%01000000
+	sta tmp4 ; A eor (horizontal flip)
+	jmp sprite_common
 
 ; =====
 ; Sound
@@ -613,7 +690,9 @@ nmi:
 	sta $2000
 	; upload _ppu_send
 	jsr ppu_packet_apply
-	; set scroll and mask ($2000 is already set)
+	; set scroll and mask
+	lda ppu_2000
+	sta $2000
 	lda ppu_2005+0
 	sta $2005
 	lda ppu_2005+1
@@ -645,7 +724,7 @@ ppu_packet_apply: ; applies all packets stored in _ppu_send
 	tsx
 	txa
 	tay ; save stack position
-	ldx #<_ppu_send
+	ldx #<(_ppu_send-1)
 	txs
 @send_packet:
 	; first byte of packet = count

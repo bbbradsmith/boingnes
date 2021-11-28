@@ -1,4 +1,4 @@
-// Generated: Sat Nov 27 03:50:36 2021
+// Generated: Sun Nov 28 05:40:54 2021
 #define SPRITE_squ0000                0
 #define SPRITE_sqs0000                1
 #define SPRITE_squ0001                2
@@ -47,4 +47,5 @@
 #define SPRITE_pas0010                45
 #define SPRITE_pau0011                46
 #define SPRITE_pas0011                47
-#define SPRITE_COUNT                  48
+#define SPRITE_boing                  48
+#define SPRITE_COUNT                  49

@@ -129,6 +129,25 @@ class Tile:
 # blank tile
 Tile.BLANK = Tile()
 
+# make CHR tiles directly from image, no omissions or elimination of duplicates
+def make_chr(img,tiles=[]):
+    tw = img.width // 8
+    th = img.height // 8
+    for ty in range(0,th):
+        for tx in range(0,tw):
+            (t,a) = Tile.grab(img,tx*8,ty*8)
+            tiles.append(t)
+    return tiles
+
+def convert_chr(filename,palette,tiles=[]):
+    print("convert chr: " + filename)
+    old_tilecount = len(tiles)
+    img = index_img_load(filename,palette)
+    tiles = make_chr(img,tiles)
+    print("%d new tiles. %d total." % (len(tiles)-old_tilecount,len(tiles)))
+    print()
+    return tiles
+
 # convert list of Tile to binary blob
 def tile_dump(tiles):
     d = bytearray()
@@ -391,12 +410,15 @@ bg_pal = [
 fg_pal = [
     (  0,  0,  0),( 64, 64, 64),(255,  0,  0),(255,255,255),
     (  0,  0,  0),( 64, 64, 64),(255,255,255),(255,  0,  0),
+    (  0,  0,  0),( 70, 30,  0),(143, 75,  0),(241,151, 16),
     ]
 
 bg_tiles = []
 fg0_tiles = []
 fg1_tiles = []
 
+# font
+bg_tiles = convert_chr("gfx/font.png",bg_pal,bg_tiles)
 # backgrounds
 bg_tiles = convert_nametable_img("gfx/amiga.png",bg_pal,bg_tiles)
 bg_tiles = convert_nametable_img("gfx/atari.png",bg_pal,bg_tiles)
@@ -422,6 +444,9 @@ for (fn,pre,il) in sp1:
         spriteset.append((pre+"u%04d"%i,s))
         (s,fg1_tiles) = convert_sprite(fn%i,fg_pal,fg1_tiles,pre+"s",True)
         spriteset.append((pre+"s%04d"%i,s))
+
+(s,fg0_tiles) = convert_sprite("gfx/boing.png",fg_pal,fg0_tiles)
+spriteset.append(("boing",s))
 
 export_sprites("sprite",spriteset)
 

@@ -10,4 +10,4 @@ temp/*.lst
 temp/*.nes
 temp/*.png
 *.opt
-cmd.exe.lnk
+*.lnk
