@@ -340,7 +340,7 @@ def convert_sprite(filename,palette,tiles=[],prefix="",shadow=False):
     src = index_img_load(filename,palette)
     if shadow: # generate "shadow" in color 1, shifted
         SOX = 4
-        SOY = 2
+        SOY = 3
         for y in range(SOY,src.height):
             for x in range(SOX,src.width):
                 if src.getpixel((x,y)) != 0:
