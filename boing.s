@@ -111,7 +111,6 @@ _sfx_amiga_wall:
 .byte $15, $1F ; DPCM trigger
 .byte SFX_END
 
-
 ; ===
 ; RAM
 ; ===
