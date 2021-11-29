@@ -108,7 +108,6 @@ void libtest()
 	static uint8 hexpackets[6];
 
 	cnrom_bank = 0;
-	ascii_offset = 0x20; // $20 subtracted from ASCII to get CHR tile ($20 ' ' is located at 0)
 	ppu_latch(0x2000); // empty first screen
 	ppu_fill(0,1024);
 	ppu_latch(0x2C00); // second screen displays all tiles / all palettes
@@ -186,19 +185,55 @@ const uint8 pal[32] = {
 	0x0F, 0x09, 0x19, 0x29, // (filler green)
 };
 
+const char* const about[] = {
+	"NES Boing Ball",
+	"Brad Smith, 2021",
+	"rainwarrior.ca",
+	"",
+	"Inspiration:",
+	"",
+	"Amiga: \"Boing!\" 1984",
+	"Dale Luck & RJ Mical",
+	"",
+	"Atari ST: \"BOINK\" 1985",
+	"Jim Eisenstein",
+};
+const int ABOUT_LEN = sizeof(about)/sizeof(about[0]);
+
+// bounce edges
+#define BOING_XL   ( 43*256)
+#define BOING_XR   (213*256)
+#define BOING_VX   (((uint16)(BOING_XR-BOING_XL))/240)
+
+// TODO maybe use uint32 for Y and make positive up, subtracting from YB?
+// would need a tile skip for Y wrap in sprite code?... otherwise maybe just uint6 and keep to YTM
+// but YT/YTM are really defined by the bounce velocity instead of anything else...
+#define BOING_YB   210
+#define BOING_YT   88
+#define BOING_YTM  65
+
+
 // variables
 uint8 boing_bg = 0;
 uint8 boing_par = 0;
+uint8 boing_dir = 1;
+uint8 boing_about = 0;
 
 uint16 boing_x = 128<<8;
 uint16 boing_y = 120<<8;
 uint16 boing_r = 0;
 
-uint16 boing_vx = 0; // TODO
 uint16 boing_vy = 0; // TODO
 uint16 boing_vr = 256/2; // spin rate
 
 uint8 boing_sprite = SPRITE_squ0000;
+
+void text_center(uint8 y, const char* s)
+{
+	for (j=0; s[j]!=0 && j<31; ++j); // j = length of s
+	ppu_latch_at(16-((j+1)/2),y);
+	ppu_string(s);
+}
 
 // redraw backgrounds while rendering is off
 void boing_redraw()
@@ -206,6 +241,13 @@ void boing_redraw()
 	ppu_latch(0x2000);
 	ppu_load(boing_bg ? atari_nmt : amiga_nmt,1024);
 	ppu_scroll(0,0);
+	if (boing_about)
+	{
+		ppu_latch_at(0,8);
+		ppu_fill(0,(ABOUT_LEN+2)*32);
+		for (i=0; i < ABOUT_LEN; ++i)
+			text_center(9+i,about[i]);
+	}
 }
 
 // animated ball
@@ -215,11 +257,34 @@ void boing_animate()
 	boing_sprite += (boing_r >> 8) * 2; // rotation
 	if (nmi_count & 1) boing_sprite += 1; // shadow
 
-	boing_r += boing_vr;
+	// spin
+	boing_r += boing_dir ? -boing_vr : boing_vr;
 	while (boing_r >= (128<<8)) boing_r += (12<<8); // wrap negative 0-11
 	while (boing_r >= ( 12<<8)) boing_r -= (12<<8); // wrap positive 0-11
 	
-	// TODO vx/vy and bounce sounds
+	// horizontal motion
+	if (boing_dir)
+	{
+		boing_x += BOING_VX;
+		if (boing_x >= BOING_XR)
+		{
+			boing_x = BOING_XR;
+			boing_dir ^= 1;
+			// TODO play sound
+		}
+	}
+	else
+	{
+		boing_x -= BOING_VX;
+		if (boing_x <= BOING_XL)
+		{
+			boing_x = BOING_XL;
+			boing_dir ^= 1;
+			// TODO play sound
+		}
+	}
+
+	// TODO vy and bounce sounds
 
 	// TODO controls
 	
@@ -232,6 +297,7 @@ void boing_animate()
 // main loop
 void main()
 {
+	ascii_offset = 0x20; // $20 subtracted from ASCII to get CHR tile ($20 ' ' is located at 0)
 	nescopy(palette,pal,32);
 	boing_redraw();
 
@@ -253,10 +319,20 @@ void main()
 			boing_bg ^= 1;
 			boing_redraw();
 		}
+		// start for about
+		else if (input_new[0] & PAD_START)
+		{
+			ppu_render_off();
+			boing_about ^= 1;
+			boing_redraw();
+		}
 		// B/A to select pixel-aspect-ratio
 		if (input_new[0] & PAD_B) boing_par = 1;
 		if (input_new[0] & PAD_A) boing_par = 0;
-		// TODO left/right up/down
+		// left/right to adjust spin
+		if (input[0] & PAD_L) --boing_vr;
+		if (input[0] & PAD_R) ++boing_vr;
+		// TODO up/down
 		boing_animate();
 		ppu_render_frame();
 	}
