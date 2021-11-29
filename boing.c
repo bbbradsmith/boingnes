@@ -200,18 +200,17 @@ const char* const about[] = {
 };
 const int ABOUT_LEN = sizeof(about)/sizeof(about[0]);
 
-// bounce edges
-#define BOING_XL   ( 43*256)
-#define BOING_XR   (213*256)
-#define BOING_VX   (((uint16)(BOING_XR-BOING_XL))/240)
-
-// TODO maybe use uint32 for Y and make positive up, subtracting from YB?
-// would need a tile skip for Y wrap in sprite code?... otherwise maybe just uint6 and keep to YTM
-// but YT/YTM are really defined by the bounce velocity instead of anything else...
-#define BOING_YB   210
-#define BOING_YT   88
-#define BOING_YTM  65
-
+// bounce constants
+#define BOING_XL      ( 43*256)
+#define BOING_XR      (213*256)
+#define BOING_VX      (((uint16)(BOING_XR-BOING_XL))/157)
+#define BOING_YB      210
+#define BOING_YT      88
+#define BOING_VY      1687
+#define BOING_VYMAX   1828
+#define BOING_AY      46
+// VY/AY is chosen to meet BOING_YT on a bounce of 74 frames (see bounce.py)
+// VYMAX keeps the highest bounce from allowing the sprite to leave the screen
 
 // variables
 uint8 boing_bg = 0;
@@ -220,10 +219,11 @@ uint8 boing_dir = 1;
 uint8 boing_about = 0;
 
 uint16 boing_x = 128<<8;
-uint16 boing_y = 120<<8;
+uint16 boing_y = (BOING_YB-BOING_YT)<<8;
 uint16 boing_r = 0;
 
-uint16 boing_vy = 0; // TODO
+uint16 boing_vy = 0;
+uint16 boing_bvy = BOING_VY; // speed at bounce
 uint16 boing_vr = 256/2; // spin rate
 
 uint8 boing_sprite = SPRITE_squ0000;
@@ -261,35 +261,44 @@ void boing_animate()
 	boing_r += boing_dir ? -boing_vr : boing_vr;
 	while (boing_r >= (128<<8)) boing_r += (12<<8); // wrap negative 0-11
 	while (boing_r >= ( 12<<8)) boing_r -= (12<<8); // wrap positive 0-11
-	
-	// horizontal motion
-	if (boing_dir)
+
+	// motion
+	if (!(input[0] & (PAD_B | PAD_A)))
 	{
-		boing_x += BOING_VX;
-		if (boing_x >= BOING_XR)
+		// horizontal motion
+		if (boing_dir)
 		{
-			boing_x = BOING_XR;
-			boing_dir ^= 1;
+			boing_x += BOING_VX;
+			if (boing_x >= BOING_XR)
+			{
+				boing_x = BOING_XR;
+				boing_dir ^= 1;
+				// TODO play sound
+			}
+		}
+		else
+		{
+			boing_x -= BOING_VX;
+			if (boing_x <= BOING_XL)
+			{
+				boing_x = BOING_XL;
+				boing_dir ^= 1;
+				// TODO play sound
+			}
+		}
+
+		boing_y += boing_vy;
+		boing_vy -= BOING_AY; // gravity
+		if (boing_y >= (BOING_YB<<8)) // wrapped = bounce
+		{
+			boing_y = 0;
+			boing_vy = boing_bvy;
 			// TODO play sound
 		}
 	}
-	else
-	{
-		boing_x -= BOING_VX;
-		if (boing_x <= BOING_XL)
-		{
-			boing_x = BOING_XL;
-			boing_dir ^= 1;
-			// TODO play sound
-		}
-	}
-
-	// TODO vy and bounce sounds
-
-	// TODO controls
 	
 	sprite_begin();
-	sprite(boing_sprite,boing_x>>8,boing_y>>8); // TODO boing sprite
+	sprite(boing_sprite,boing_x>>8,BOING_YB-(boing_y>>8));
 	sprite_end();
 	cnrom_bank = boing_par;
 }
@@ -332,7 +341,10 @@ void main()
 		// left/right to adjust spin
 		if (input[0] & PAD_L) --boing_vr;
 		if (input[0] & PAD_R) ++boing_vr;
-		// TODO up/down
+		// up/down to adjust bounce
+		if (input[0] & PAD_U) { boing_bvy += 3; if (boing_bvy >= BOING_VYMAX) boing_bvy = BOING_VYMAX; }
+		if (input[0] & PAD_D) { boing_bvy -= 3; if (boing_bvy >= (128<<8)) boing_bvy = 0; }
+
 		boing_animate();
 		ppu_render_frame();
 	}
