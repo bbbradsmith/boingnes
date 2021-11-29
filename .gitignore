@@ -5,6 +5,7 @@ temp/runtime/
 temp/*.o
 temp/*.s
 temp/*.dbg
+temp/*.deb
 temp/*.map
 temp/*.lst
 temp/*.nes

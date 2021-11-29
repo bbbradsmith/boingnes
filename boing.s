@@ -143,7 +143,7 @@ _ppu_latch_at: ; void ppu_latch_at(uint8 x, uint8 y)
 	; Y: ....6.54 321.....
 	; A = Y
 	ldx #0
-	sta ptr1+0
+	stx ptr1+0
 	lsr
 	ror ptr1+0
 	lsr
@@ -180,23 +180,23 @@ _ppu_load: ; void ppu_load(uint8* data, uint16 count)
 	stx ptr2+1 ; ptr2 = count
 	jsr popptr1 ; ptr1 = data
 	ldy #0
-	lda ptr2+0
-	ora ptr2+1
-	beq @rts
 @loop:
-	lda (ptr1), Y
-	sta $2007
-	inc ptr1+0 ; inc ptr1
-	bne :+
-		inc ptr1+1
-	:
-	lda ptr2+0 ; dec ptr2 (quit if 0)
+	; dec ptr2 (quit if 0)
+	lda ptr2+0
 	bne :+
 		lda ptr2+1
 		beq @rts
 		dec ptr2+1
 	:
 	dec ptr2+0
+	; load
+	lda (ptr1), Y
+	sta $2007
+	; inc ptr1
+	inc ptr1+0
+	bne :+
+		inc ptr1+1
+	:
 	jmp @loop
 @rts:
 	rts
@@ -204,21 +204,18 @@ _ppu_load: ; void ppu_load(uint8* data, uint16 count)
 _ppu_fill: ; void ppu_fill(uint8 value, uint16 count)
 	sta ptr2+0
 	stx ptr2+1
-	txa
-	ora ptr2+0
-	bne :+
-		jmp popa
-	:
 	jsr popa
 @loop:
-	sta $2007
-	ldx ptr2+0 ; dec ptr2 (quit if 0)
+	; dec ptr2 (quit if 0)
+	ldx ptr2+0
 	bne :+
 		ldx ptr2+1
 		beq @rts
 		dec ptr2+1
 	:
 	dec ptr2+0
+	; fill
+	sta $2007
 	jmp @loop
 @rts:
 	rts
@@ -703,7 +700,7 @@ nmi:
 	lda _cnrom_bank
 	and #1 ; 2 banks
 	tax
-	sta cnrom_table
+	sta cnrom_table, X
 @post_send:
 	jsr sound_tick
 	lda #0
