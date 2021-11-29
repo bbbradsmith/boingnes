@@ -282,7 +282,7 @@ uint16 boing_r = 0;
 
 uint16 boing_vy = 0;
 uint16 boing_bvy = BOING_VY; // speed at bounce
-uint16 boing_vr = 256/2; // spin rate
+uint16 boing_vr = (2*256)/3; // spin rate
 
 uint8 boing_sprite = SPRITE_squ0000;
 
