@@ -264,10 +264,10 @@ const int ABOUT_LEN = sizeof(about)/sizeof(about[0]);
 #define BOING_VX      (((uint16)(BOING_XR-BOING_XL))/157)
 #define BOING_YB      210
 #define BOING_YT      88
-#define BOING_VY      1687
-#define BOING_VYMAX   1828
-#define BOING_AY      46
-// VY/AY is chosen to meet BOING_YT on a bounce of 74 frames (see bounce.py)
+#define BOING_VY      1110
+#define BOING_VYMAX   1211
+#define BOING_AY      20
+// VY/AY is chosen to meet BOING_YT on a bounce of 113 frames (see bounce.py)
 // VYMAX keeps the highest bounce from allowing the sprite to leave the screen
 
 // variables

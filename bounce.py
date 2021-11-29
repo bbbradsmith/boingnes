@@ -5,7 +5,7 @@
 Y_BASE = 210
 Y_TOP  = 88
 Y_MAX  = 65 # maximum allowed height
-TIME = 74 # time to bounce
+TIME = 113 # time to bounce
 
 # simulates given arc with starting VY and gravity AY
 # returns (peak,time length)
@@ -41,7 +41,7 @@ def test(vy,ay):
     (p,t) = arc(vy,ay)
     p = Y_BASE - (p//256)
     print("%5d,%5d: %3d %3d" % (vy,ay,p,t))
-
+ 
 
 # guessing to meet Y_TOP, then check with a range of tests
 (gv,ga) = guess(Y_TOP,TIME)
@@ -50,14 +50,14 @@ test_guess = False # turn this on to test
 if test_guess:
     for ia in range(-5,6):
         for iv in range(-5,6):
-            test(gv+iv,ga+ia)
-        
-arc(1687,46,True) # VY/AY, best fit found
+            test(int(gv+iv),int(ga+ia))
+else:
+    arc(1110,20,True) # VY/AY, best fit found
 
 # keep ay the same but adjust vy to meet Y_MAX
 test_max = False
 if test_max:
     for ia in range(0,200):
-        test(1687+ia,46)
-
-arc(1828,46,True) # VYMAX
+        test(int(1110+ia),20)
+else:
+    arc(1211,20,True) # VYMAX
