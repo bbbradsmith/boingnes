@@ -6,6 +6,8 @@
 
 .export _amiga_nmt          ; uint8 amiga_nmt[1024]
 .export _atari_nmt          ; uint8 atari_nmt[1024]
+.export _sfx_amiga_floor    ; uint8 sfx_amiga_floor[]
+.export _sfx_amiga_wall     ; uint8 sfx_amiga_wall[]
 
 _nmi_count = nmi_count
 .exportzp _nmi_count        ; uint8 nmi_count
@@ -83,6 +85,32 @@ _amiga_nmt:
 
 _atari_nmt:
 .incbin "temp/atari.nmt"
+
+.segment "DPCM"
+.align 64
+boing_dmc:
+.incbin "boing.dmc"
+boing_dmc_len = * - boing_dmc
+
+; sound effects here rather than in C because the boing_dmc/len doesn't seem
+; to work as a constent if exporter to C
+.segment "RODATA"
+_sfx_amiga_floor:
+.byte $15, $0F ; DPCM off
+.byte $13, boing_dmc_len >> 4 ; DPCM length
+.byte $12, <(boing_dmc >> 6) ; DPCM address
+.byte $10, $0D ; DPCM rate
+.byte $15, $1F ; DPCM trigger
+.byte SFX_END
+
+_sfx_amiga_wall:
+.byte $15, $0F ; DPCM off
+.byte $13, boing_dmc_len >> 4 ; DPCM length
+.byte $12, <(boing_dmc >> 6) ; DPCM address
+.byte $10, $0F ; DPCM rate
+.byte $15, $1F ; DPCM trigger
+.byte SFX_END
+
 
 ; ===
 ; RAM
@@ -535,11 +563,14 @@ sfx_next:
 	iny
 	cmp #SFX_END ; halted
 	bne :+
+		dey ; rewind to stay on SFX_END
+		bne @sfx_ptr_adjust
 		rts
 	:
 	cmp #SFX_FRAME ; advance to next frame
 	bcc sfx_register
 	bne :+
+	@sfx_ptr_adjust:
 		tya
 		clc
 		adc sfx_ptr+0
