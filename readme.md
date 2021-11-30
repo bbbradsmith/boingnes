@@ -21,23 +21,23 @@ Support the author: [Patreon](https://www.patreon.com/rainwarrior)
 
 ## How to Build
 
-Download [cc65](https://cc65.github.io/) (Windows Snapshot) and place it in a
+Download [**cc65**](https://cc65.github.io/) (Windows Snapshot) and place it in a
 **cc65** folder in this directory.
 
-Run **built.bat** to build the ROM to **temp/boing.nes**.
+Run **build.bat** to build the ROM to **temp/boing.nes**.
 
 This program uses a reduced subset of the cc65 C runtime library.
-If you wish to rebuild the library, download the **libsrc** folder from the
-[cc65 source code](https://github.com/cc65/cc65) and place it in this
-directory, and run **build_runtime.bat**.
+This is pre-built, but if you wish to rebuild it, download the **libsrc** folder
+from the [**cc65 source code**](https://github.com/cc65/cc65)
+and place it in this directory, and run **build_runtime.bat**.
 This will rebuild **temp/runtime.lib**.
 (See batch file for more information.)
 
 The graphics data can be rebuilt with **build_gfx.py**.
 This converts several PNG images in the **gfx** folder into data for the build,
 placed in the **temp** folder.
-This script requires [Python 3](https://www.python.org/) with
-[PIL](https://pillow.readthedocs.io).
+This script requires [**Python 3**](https://www.python.org/) with
+[**PIL**](https://pillow.readthedocs.io).
 
 These tools can also be run on other operating systems, but you would have to
 duplicate the batch scripts in a format suitable for your OS.
