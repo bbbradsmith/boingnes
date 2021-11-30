@@ -2,9 +2,9 @@
 
 A recreation of the Amiga Boing! demo for NES, and also the Atari ST BOINK.
 
-Download ROM: [Releases](https://github.com/bbbradsmith/boingnes/releases)
+More info about this project: [Patreon article[(https://www.patreon.com/posts/boing-ball-for-59302672)
 
-Support the author: [Patreon](https://www.patreon.com/rainwarrior)
+Download ROM: [Releases](https://github.com/bbbradsmith/boingnes/releases)
 
 [My Website](https://rainwarrior.ca)
 
