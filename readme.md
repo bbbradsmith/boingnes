@@ -47,7 +47,7 @@ duplicate the batch scripts in a format suitable for your OS.
 This project was partly intended as a simple C example for NES development,
 and something I might use as a starting point for later projects.
 It's sort of a continuation of my earlier
-[NESert Golfint](https://github.com/bbbradsmith/NESertGolfing) project,
+[NESert Golfing](https://github.com/bbbradsmith/NESertGolfing) project,
 but trying to provide for more "normal" NES needs.
 
 It contains an assembly framework for normal NES operations which can be
