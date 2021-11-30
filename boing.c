@@ -78,6 +78,11 @@ extern void sprite(uint8 e, uint8 x, uint8 y); // add sprite "e" at x/y
 extern void sprite_flip(uint8 e, uint8 x, uint8 y); // sprite with horizontal flip
 
 extern void sound_play(const uint8* sound); // play the sound data
+// Sound data format:
+//   uint8 register r: next byte will be written to $4000+r
+//     $FD = wait 1 frame
+//     $FF = end of sound
+
 extern uint8 input_poll(); // poll the first player gamepad (result also in input/input_new)
 extern uint8 input_poll2(); // poll both gamepads
 void nescopy(void* dst, const void* src, uint8 count); // copies bytes (memcpy replacement), but count is <256
