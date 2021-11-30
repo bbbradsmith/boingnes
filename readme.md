@@ -71,12 +71,18 @@ to support cc65's generated C code. The C standard library is not included,
 so including most C library headers (e.g. *string.h*) will probably not be
 useful here.
 
+The sprite generator looks for redundant horizontal and vertical flipped tiles
+and tries to reuse them. For this demo it also has an additional redundancy check
+that swaps the red-white ball tiles for white-red, but for a more generic use this
+should be removed. Look for "palette shifted" in the comments of **build_gfx.py**
+to find the adjustment.
+
 This project used a [CNROM](https://wiki.nesdev.org/w/index.php/CNROM)
 mapper configuration, just so it could fit the ball graphics in two aspect ratios,
  but **boing.cfg** can be modified for other mappers.
 In particular the **CHR** memory regions and **TILES** segments,
 and possibly the **DPCM** segment could be removed or relocated if you
-need more space for sound samples. The NES header will also need some edting,
+need more space for sound samples. The NES header will also need a small edit,
 found at the bottom of **boing.s**.
 
 There is a test of NES library features that weren't otherwise used in **boing.nes**
