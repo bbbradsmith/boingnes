@@ -48,7 +48,7 @@ def index_img_cmp(imga,imgb,palette,error_color=(255,0,255)):
         for x in range(0,imga.width):
             pa = imga.getpixel((x,y))
             pb = imgb.getpixel((x,y))
-            if pa == pb:
+            if pa == pb or ((pa & 3) == 0 and (pb & 3) == 0):
                 img.putpixel((x,y),pa)
                 count += 1
     index_setpal(img,list(palette)+[error_color])
@@ -193,9 +193,9 @@ def make_nametable(img,tiles=[]):
             oy = ty*8
             (t,a) = Tile.grab(img,ox,oy)
             if t in tiles:
-                nmt.append(tiles.index(t))
+                nmt.append(tiles.index(t) & 0xFF)
             else:
-                nmt.append(len(tiles))
+                nmt.append(len(tiles) & 0xFF)
                 tiles.append(t)
             att.append(a)
             #print("%2d,%2d: %02X %2d" % (tx,ty,nmt[-1],att[-1]))
