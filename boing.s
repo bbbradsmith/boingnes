@@ -716,7 +716,7 @@ nmi:
 	lda ppu_2000
 	sta $2000
 	; upload _ppu_send
-	jsr ppu_packet_apply
+	jsr nmi_ppu_packet_apply
 	; set scroll and mask
 	lda ppu_2000
 	sta $2000
@@ -745,7 +745,7 @@ nmi:
 
 cnrom_table: .byte 0, 1 ; bus conflict table
 
-ppu_packet_apply: ; applies all packets stored in _ppu_send
+nmi_ppu_packet_apply: ; applies all packets stored in _ppu_send (nmi thread only)
 	; move _ppu_send address to stack
 	.assert (>_ppu_send = $01), error, "_ppu_send expected on stack page."
 	tsx
@@ -773,10 +773,32 @@ ppu_packet_apply: ; applies all packets stored in _ppu_send
 	tya
 	tax
 	txs
+ppu_packet_apply_finish:
 	lda #0
 	sta _ppu_send ; clear packet
 	sta ppu_send_pos
 	rts
+
+ppu_packet_apply: ; applies all packets stored in _ppu_send (main thread safe)
+	ldx #0
+@send_packet:
+	lda _ppu_send, X
+	beq ppu_packet_apply_finish
+	tay
+	inx
+	lda _ppu_send, X
+	inx
+	sta $2006
+	lda _ppu_send, X
+	inx
+	sta $2006
+	:
+		lda _ppu_send, X
+		inx
+		sta $2007
+		dey
+		bne :-
+	beq @send_packet
 
 ; ===
 ; IRQ
