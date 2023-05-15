@@ -86,7 +86,7 @@ extern void sound_play(const uint8* sound); // play the sound data
 extern uint8 input_poll(); // poll the first player gamepad (result also in input/input_new)
 extern uint8 input_poll2(); // poll both gamepads
 
-void nescopy(void* dst, const void* src, uint8 count); // copies bytes (memcpy replacement), but count is <256
+extern void nescopy(void* dst, const void* src, uint8 count); // copies bytes (memcpy replacement), but count is <256
 
 #define PAD_A       0x80
 #define PAD_B       0x40
